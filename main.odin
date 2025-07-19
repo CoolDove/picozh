@@ -10,11 +10,6 @@ import smary "core:container/small_array"
 
 data := #load("quan.bdf", string)
 
-Result :: struct {
-	size : int,
-}
-result : Result
-
 chars : map[rune]CharInfo
 CharInfo :: struct {
 	box   : [4]int,
@@ -30,7 +25,6 @@ state_size :State= {
 	process_line = proc(s: ^State, line: string) -> bool {
 		elems := strings.split(line, " ", context.temp_allocator)
 		if elems[0] == "SIZE" {
-			result.size = strconv.atoi(elems[1])
 			change_state(&state_get_char)
 		}
 		return false
@@ -139,7 +133,6 @@ main :: proc() {
 			int(r),
 			box[0], box[1], box[2], box[3],
 			to_string(glyphline),
-			// info.glyph,
 			r))
 	}
 	os.write_entire_file(generate_target, transmute([]u8)to_string(sb))
