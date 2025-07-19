@@ -3,6 +3,8 @@
 这是一个用来在 [pico-8](https://www.lexaloffle.com/pico-8.php) 中渲染 Unicode 的工具
 （主要是中文，其它语言在这个字体里的覆盖程度我没有测试过）。
 
+使用的字体是[全小素](https://diaowinner.itch.io/galmuri-extended)。
+
 ![image](image.png)
 
 # 使用方法
