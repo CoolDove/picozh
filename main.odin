@@ -6,20 +6,20 @@ import "core:strings"
 import "core:unicode"
 import "core:unicode/utf8"
 import "core:strconv"
+import smary "core:container/small_array"
 
 data := #load("quan.bdf", string)
-
 
 Result :: struct {
 	size : int,
 }
 result : Result
 
-
 chars : map[rune]CharInfo
 CharInfo :: struct {
 	box   : [4]int,
-	glyph : [8]u8,
+	glyph     : smary.Small_Array(8, u8),
+	glyphline : smary.Small_Array(8, string),
 }
 
 State :: struct {
@@ -42,8 +42,8 @@ StateGetChar :: struct {
 	idx       : int,
 	using _to_reset : struct {
 		codepoint  : rune,
-		glyph      : [8]u8,
-		glyph_ptr  : int,
+		glyph      : smary.Small_Array(8, u8),
+		glyphline  : smary.Small_Array(8, string),
 		open_glyph : bool,
 		box        : [4]int,
 	}
@@ -61,17 +61,13 @@ state_get_char :StateGetChar= {
 		} else {
 			if s.open_glyph {
 				if elems[0] == "ENDCHAR" {
-					map_insert(&chars, s.codepoint, CharInfo{ glyph = s.glyph, box = s.box })
+					map_insert(&chars, s.codepoint, CharInfo{ glyph = s.glyph, glyphline = s.glyphline, box = s.box })
 					s.idx += 1
 					s._to_reset = {}
 				} else {
 					glyph, ok := strconv.parse_int(elems[0], 16)
-					if s.glyph_ptr<len(s.glyph[:]) {
-						s.glyph[s.glyph_ptr] = u8(glyph)
-					} else {
-						// fmt.printf("Invalid glyph, too big: {} ({})\n", s.codepoint, s.glyph_ptr)
-					}
-					s.glyph_ptr += 1
+					smary.push(&s.glyph, u8(glyph))
+					smary.push(&s.glyphline, elems[0])
 				}
 			} else {
 				if elems[0] == "BITMAP" {
@@ -121,23 +117,33 @@ main :: proc() {
 
 	runes := make(map[rune]CharInfo); defer delete(runes)
 	srcrunes := utf8.string_to_runes(string(source)); defer delete(srcrunes)
-	gencount : int
 	for r in srcrunes {
 		cinfo, ok := chars[r]
-		if !ok do continue
+		if !ok && !(r in runes) do continue
 		map_insert(&runes, r, cinfo)
-		gencount += 1
 	}
 	for r, info in runes {
 		box := info.box
-		write_string(&sb, fmt.tprintf("_unicode_table[{}] = {{ {}, {}, {}, {} }} -- {}\n",
+		if r == ' ' || r == '　' {
+			box.x = 4
+		}
+
+		using strings
+		glyphline : Builder
+		builder_init(&glyphline); defer builder_destroy(&glyphline)
+		for i in 0..<smary.len(info.glyphline) {
+			write_string(&glyphline, smary.get(info.glyphline, i))
+			write_rune(&glyphline, ',')
+		}
+		write_string(&sb, fmt.tprintf("_unicode_table[{}] = {{ {}, {}, {}, {}, '{}'}} -- {}\n",
 			int(r),
 			box[0], box[1], box[2], box[3],
+			to_string(glyphline),
 			// info.glyph,
 			r))
 	}
 	os.write_entire_file(generate_target, transmute([]u8)to_string(sb))
-	fmt.printf("{} characters generated.\n", gencount)
+	fmt.printf("{} characters generated.\n", len(runes))
 }
 
 _draw_glyph :: proc(r: rune) -> bool {
@@ -145,7 +151,7 @@ _draw_glyph :: proc(r: rune) -> bool {
 	if !ok do return false
 	fmt.printf("box: {}\n", cinfo.box)
 	for y in 0..<8 {
-		l := cinfo.glyph[y]
+		l := smary.get(cinfo.glyph, y)
 		for x in 0..<8 {
 			x := 8-cast(uint)x
 			if 1<<x & l > 0 {
