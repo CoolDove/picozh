@@ -81,16 +81,38 @@ change_state :: proc(s: ^State) {
 	state = s
 }
 
+sources : strings.Builder
+target : string
+
 main :: proc() {
 	if len(os.args) < 2 do return
 
-	source, ok := os.read_entire_file(os.args[1]); defer delete(source)
-	if !ok {
-		fmt.eprintf("failed to load file: {}\n", os.args[1])
+	strings.builder_init(&sources); defer strings.builder_destroy(&sources)
+
+	argsok := args_read(
+		{ argr_follow_by("-to"), arga_action(
+			proc(arg:string, user_data: rawptr) -> bool {
+				target = arg
+				return true
+			})
+		},
+		{ argr_any(), arga_action(
+			proc(arg:string, user_data: rawptr) -> bool {
+				source, ok := os.read_entire_file(arg)
+				if ok {
+					strings.write_string(&sources, string(source))
+					return true
+				}
+				return false
+			}) 
+		}
+	)
+	if !argsok {
+		fmt.eprintf("Invalid args.\n`picozh {sourcefile0} {sourcefile1} ... -to {targetfile}`")
 		os.exit(255)
 	}
 
-	generate_target := os.args[2] if len(os.args) > 2 else "./unicode.lua"
+	if target == "" do target = "./unicode.lua"
 
 	chars = make(map[rune]CharInfo); defer delete(chars)
 
@@ -110,7 +132,7 @@ main :: proc() {
 	}
 
 	runes := make(map[rune]CharInfo); defer delete(runes)
-	srcrunes := utf8.string_to_runes(string(source)); defer delete(srcrunes)
+	srcrunes := utf8.string_to_runes(to_string(sources)); defer delete(srcrunes)
 	for r in srcrunes {
 		cinfo, ok := chars[r]
 		if !ok && !(r in runes) do continue
@@ -135,7 +157,7 @@ main :: proc() {
 			to_string(glyphline),
 			r))
 	}
-	os.write_entire_file(generate_target, transmute([]u8)to_string(sb))
+	os.write_entire_file(target, transmute([]u8)to_string(sb))
 	fmt.printf("{} characters generated.\n", len(runes))
 }
 

@@ -8,7 +8,7 @@
 ![image](image.png)
 
 # 使用方法
-运行`picozh {source} {target}`，程序会根据 `source` 文件里出现的所有字符生成 `target`，
+运行`picozh {sourcefile...} -to {target}`，程序会根据 `sourcefile` 文件里出现的所有字符生成 `target` 文件，
 在你的 pico8 文件中 `#include` 生成的文件，使用其中定义的 `gprint` 函数即可。
 
 因为使用 utf8 编码，所以你自己的游戏文件也需要写在另外的 lua 文件中然后 `#include`。
