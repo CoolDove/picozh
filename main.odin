@@ -114,12 +114,13 @@ main :: proc() {
 
 	if target == "" do target = "./unicode.lua"
 
+	for i in 32..<127 do strings.write_rune(&sources, rune(i))
+
 	chars = make(map[rune]CharInfo); defer delete(chars)
 
 	for line in strings.split_lines_iterator(&data) {
 		if state->process_line(line) do break
 	}
-	fmt.printf("{} chars read\n", len(chars))
 
 	using strings
 	sb : Builder
