@@ -108,7 +108,7 @@ main :: proc() {
 		}
 	)
 	if !argsok {
-		fmt.eprintf("Invalid args.\n`picozh {sourcefile0} {sourcefile1} ... -to {targetfile}`")
+		fmt.eprintf("Invalid args.\n`picozh {sourcefile...} -to {targetfile}`")
 		os.exit(255)
 	}
 
