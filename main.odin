@@ -152,7 +152,7 @@ main :: proc() {
 			write_string(&glyphline, smary.get(info.glyphline, i))
 			write_rune(&glyphline, ',')
 		}
-		write_string(&sb, fmt.tprintf("_unicode_table[{}] = {{ {}, {}, {}, {}, '{}'}} -- {}\n",
+		write_string(&sb, fmt.tprintf("regchar({}, {}, {}, {}, {}, '{}') -- {}\n",
 			int(r),
 			box[0], box[1], box[2], box[3],
 			to_string(glyphline),

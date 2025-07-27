@@ -57,3 +57,6 @@ end
 
 _unicode_table = {}
 
+function regchar(codepoint, w,h, ox,oy, bitmap)
+	_unicode_table[codepoint] = {w,h,ox,oy, bitmap}
+end
