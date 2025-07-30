@@ -20,10 +20,10 @@ function gprint(text, x, y, col)
 						end
 					end
 				end
-				xx += w + dx + 2
+				xx = xx + w + dx + 2
 			else
 				print("?", xx,yy, col)
-				xx += 4
+				xx = xx + 4
 			end
 		end
 	end
@@ -50,13 +50,15 @@ function utf8_iter(s)
 			len = 4
 		end
 
-		i += len
+		i = i + len
 		return cp
 	end
 end
 
 _unicode_table = {}
 
-function regchar(codepoint, w,h, ox,oy, bitmap)
-	_unicode_table[codepoint] = {w,h,ox,oy, bitmap}
+function regchar(codestr) -- codepoint;w;h;ox;oy;bitmap
+	local parsed = split(codestr, ";")
+	_unicode_table[parsed[1]] = {unpack(parsed, 2)}
 end
+
