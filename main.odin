@@ -84,18 +84,35 @@ change_state :: proc(s: ^State) {
 sources : strings.Builder
 target : string
 
+p8file : string
+sprite_pages : [dynamic]int
+
 main :: proc() {
 	if len(os.args) < 2 do return
 
 	strings.builder_init(&sources); defer strings.builder_destroy(&sources)
 
+	sprite_pages = make([dynamic]int); defer delete(sprite_pages)
 	argsok := args_read(
+		{ argr_follow_by("-p8"), arga_set(&p8file)},
+		{ argr_prefix("--sprite-page:"), arga_action(
+			proc(arg:string, user_data: rawptr) -> bool {
+				if page, ok := strconv.parse_int(arg); ok {
+					if page>3 || page<0 do return false
+					for p in sprite_pages do if p == page do return false
+					append(&sprite_pages, page)
+					return true
+				} else {
+					return false
+				}
+			}
+		)},
 		{ argr_follow_by("-to"), arga_action(
 			proc(arg:string, user_data: rawptr) -> bool {
 				target = arg
 				return true
-			})
-		},
+			}
+		)},
 		{ argr_any(), arga_action(
 			proc(arg:string, user_data: rawptr) -> bool {
 				source, ok := os.read_entire_file(arg)
@@ -104,12 +121,35 @@ main :: proc() {
 					return true
 				}
 				return false
-			}) 
-		}
+			}
+		)}
 	)
 	if !argsok {
-		fmt.eprintf("Invalid args.\n`picozh {sourcefile...} -to {targetfile}`")
+		fmt.eprint("Invalid args.\n`picozh {sourcefile...} -to {targetfile} [--sprite-page:x(0,1,2,3)] [-p8 p8file]`")
 		os.exit(255)
+	} else {
+		fmt.printf("pages: {}\n", sprite_pages)
+		fmt.printf("p8file: {}\n", p8file)
+		if f, o := os.read_entire_file(p8file); o {
+			p8 := p8_load(string(f)); defer p8_release(&p8)
+			// for ch, cd in p8.chunks {
+			// 	fmt.printf("{}\n{}\n", ch, string(cd))
+			// }
+			for page, page_idx in p8.gfx {
+				fmt.printf("page {}\n", page_idx)
+				for prow in page {
+					for row in prow {
+						for px in row {
+							col := p8colors[px]
+							fmt.printf("\x1b[48;2;{};{};{}m \x1b[0m", col.r, col.g, col.b)
+						}
+						fmt.print('\n')
+					}
+				}
+			}
+		} else {
+			fmt.printf("failed to read p8 file\n")
+		}
 	}
 
 	if target == "" do target = "./unicode.lua"
@@ -156,7 +196,8 @@ main :: proc() {
 			int(r),
 			box[0], box[1], box[2], box[3],
 			to_string(glyphline),
-			r))
+			r)
+		)
 	}
 	os.write_entire_file(target, transmute([]u8)to_string(sb))
 	fmt.printf("{} characters generated.\n", len(runes))
