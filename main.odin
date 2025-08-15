@@ -4,6 +4,7 @@ import "core:os"
 import "core:fmt"
 import "core:strings"
 import "core:unicode"
+import "core:slice"
 import "core:unicode/utf8"
 import "core:strconv"
 import smary "core:container/small_array"
@@ -12,9 +13,12 @@ data := #load("quan.bdf", string)
 
 chars : map[rune]CharInfo
 CharInfo :: struct {
-	box   : [4]int,
+	r         : rune,
+	box       : [4]int,
 	glyph     : smary.Small_Array(8, u8),
 	glyphline : smary.Small_Array(8, string),
+
+	_appear_times : int,
 }
 
 State :: struct {
@@ -55,7 +59,7 @@ state_get_char :StateGetChar= {
 		} else {
 			if s.open_glyph {
 				if elems[0] == "ENDCHAR" {
-					map_insert(&chars, s.codepoint, CharInfo{ glyph = s.glyph, glyphline = s.glyphline, box = s.box })
+					map_insert(&chars, s.codepoint, CharInfo{ r=s.codepoint, glyph = s.glyph, glyphline = s.glyphline, box = s.box })
 					s.idx += 1
 					s._to_reset = {}
 				} else {
@@ -81,10 +85,15 @@ change_state :: proc(s: ^State) {
 	state = s
 }
 
+options : struct {
+	slim_mode : bool,
+	p8file_path : string,
+}
+
 sources : strings.Builder
 target : string
 
-p8file : string
+p8file : P8File
 sprite_pages : [dynamic]int
 
 main :: proc() {
@@ -94,8 +103,8 @@ main :: proc() {
 
 	sprite_pages = make([dynamic]int); defer delete(sprite_pages)
 	argsok := args_read(
-		{ argr_follow_by("-p8"), arga_set(&p8file)},
-		{ argr_prefix("--sprite-page:"), arga_action(
+		{argr_follow_by("-p8"), arga_set(&options.p8file_path)},
+		{argr_prefix("--sprite-page:"), arga_action(
 			proc(arg:string, user_data: rawptr) -> bool {
 				if page, ok := strconv.parse_int(arg); ok {
 					if page>3 || page<0 do return false
@@ -107,13 +116,14 @@ main :: proc() {
 				}
 			}
 		)},
-		{ argr_follow_by("-to"), arga_action(
+		{argr_follow_by("-to"), arga_action(
 			proc(arg:string, user_data: rawptr) -> bool {
 				target = arg
 				return true
 			}
 		)},
-		{ argr_any(), arga_action(
+		{argr_is("--slim"), arga_set(&options.slim_mode)},
+		{argr_any(), arga_action(
 			proc(arg:string, user_data: rawptr) -> bool {
 				source, ok := os.read_entire_file(arg)
 				if ok {
@@ -129,28 +139,29 @@ main :: proc() {
 		os.exit(255)
 	} else {
 		fmt.printf("pages: {}\n", sprite_pages)
-		fmt.printf("p8file: {}\n", p8file)
-		if f, o := os.read_entire_file(p8file); o {
-			p8 := p8_load(string(f)); defer p8_release(&p8)
-			// for ch, cd in p8.chunks {
-			// 	fmt.printf("{}\n{}\n", ch, string(cd))
+		fmt.printf("p8file: {}\n", options.p8file_path)
+	}
+
+	p8file_loaded : bool
+	if options.p8file_path != "" {
+		if f, o := os.read_entire_file(options.p8file_path); o {
+			p8file = p8_load(string(f))
+			p8file_loaded = true
+			// for page, page_idx in p8file.gfx {
+			// 	fmt.printf("page {}\n", page_idx)
+			// 	for row in page {
+			// 		for px in row {
+			// 			col := p8colors[px]
+			// 			fmt.printf("\x1b[48;2;{};{};{}m \x1b[0m", col.r, col.g, col.b)
+			// 		}
+			// 		fmt.print('\n')
+			// 	}
 			// }
-			for page, page_idx in p8.gfx {
-				fmt.printf("page {}\n", page_idx)
-				for prow in page {
-					for row in prow {
-						for px in row {
-							col := p8colors[px]
-							fmt.printf("\x1b[48;2;{};{};{}m \x1b[0m", col.r, col.g, col.b)
-						}
-						fmt.print('\n')
-					}
-				}
-			}
 		} else {
 			fmt.printf("failed to read p8 file\n")
 		}
 	}
+	defer if p8file_loaded do p8_release(&p8file)
 
 	if target == "" do target = "./unicode.lua"
 
@@ -177,28 +188,85 @@ main :: proc() {
 	for r in srcrunes {
 		cinfo, ok := chars[r]
 		if !ok && !(r in runes) do continue
-		map_insert(&runes, r, cinfo)
+		if !(r in runes) {
+			map_insert(&runes, r, cinfo)
+		}
+		i := runes[r]
+		i._appear_times += 1
+		runes[r] = i
 	}
-	for r, info in runes {
+	available_sprite := make([dynamic]int)
+	for p in sprite_pages {
+		for i in 0..<64 {
+			append(&available_sprite, p * 64 + i)
+		}
+	}
+	sprite_slot_ptr := 0
+
+	sorted_runes, _ := slice.map_values(runes); defer delete(sorted_runes)
+	slice.sort_by_cmp(sorted_runes[:], proc(i,j : CharInfo) -> slice.Ordering {
+		if i._appear_times > j._appear_times do return slice.Ordering.Greater
+		else if i._appear_times > j._appear_times do return slice.Ordering.Equal
+		else do return slice.Ordering.Less
+	})
+
+	for info in sorted_runes {
+		r := info.r
 		box := info.box
 		if r == ' ' || r == '　' {
 			box.x = 4
 		}
 
-		using strings
-		glyphline : Builder
-		builder_init(&glyphline); defer builder_destroy(&glyphline)
-		for i in 0..<smary.len(info.glyphline) {
-			write_string(&glyphline, smary.get(info.glyphline, i))
-			write_rune(&glyphline, ',')
+		if box.x == 7 && box.y == 7 && sprite_slot_ptr < len(available_sprite) { // write to sprite
+			slot := available_sprite[sprite_slot_ptr]
+			page_idx := slot / 64
+			x := (slot%64)%16
+			y := (slot%64)/16
+			px, py := x * 8, y * 8
+			for i in 0..<smary.len(info.glyphline) {
+				glyphline := smary.get(info.glyphline, i)
+				value, _ := strconv.parse_uint(glyphline, 16)
+				for b in 0..<8 {
+					paint := value & (1 << u8(b)) > 0
+					p8file.gfx[page_idx][py][px+(8-b)-1] = 7 if paint else 0
+				}
+				py += 1
+			}
+			if options.slim_mode {
+				write_string(&sb, fmt.tprintf("_unicode_table[{}] = {} ", int(r), slot))
+			} else {
+				write_string(&sb, fmt.tprintf("_unicode_table[{}] = {} -- {} ({})\n", int(r), slot, r, info._appear_times))
+			}
+			sprite_slot_ptr += 1
+		} else {
+			using strings
+			glyphline : Builder
+			builder_init(&glyphline); defer builder_destroy(&glyphline)
+			for i in 0..<smary.len(info.glyphline) {
+				write_string(&glyphline, smary.get(info.glyphline, i))
+				write_rune(&glyphline, ',')
+			}
+			if options.slim_mode {
+				write_string(&sb, fmt.tprintf("regchar\"{};{};{};{};{};{}\" ",
+					int(r),
+					box[0], box[1], box[2], box[3],
+					to_string(glyphline))
+				)
+			} else {
+				write_string(&sb, fmt.tprintf("regchar\"{};{};{};{};{};{}\" -- {} ({})\n",
+					int(r),
+					box[0], box[1], box[2], box[3],
+					to_string(glyphline),
+					r, info._appear_times)
+				)
+			}
 		}
-		write_string(&sb, fmt.tprintf("regchar\"{};{};{};{};{};{}\" -- {}\n",
-			int(r),
-			box[0], box[1], box[2], box[3],
-			to_string(glyphline),
-			r)
-		)
 	}
+	if p8file_loaded {
+		outputp8 := p8_write(&p8file); defer delete(outputp8)
+		os.write_entire_file(options.p8file_path, transmute([]u8)outputp8)
+	}
+
 	os.write_entire_file(target, transmute([]u8)to_string(sb))
 	fmt.printf("{} characters generated.\n", len(runes))
 }

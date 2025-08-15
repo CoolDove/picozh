@@ -10,18 +10,25 @@ function gprint(text, x, y, col)
 		else
 			local data = _unicode_table[cp]
 			if data then
-				local w, h, dx, dy, bitmap = unpack(data)
-				local rows = split(bitmap, ",")
+				if type(data) == "number" then
+					pal(7, col)
+					spr(data, xx, yy)
+					pal()
+					xx = xx + 8
+				else
+					local w, h, dx, dy, bitmap = unpack(data)
+					local rows = split(bitmap, ",")
 
-				for row=1,#rows do
-					local byte = tonum("0x"..rows[row])
-					for bit=0,7 do
-						if band(byte, shl(0x80, -bit)) ~= 0 then
-							pset(xx + bit + dx, yy + 5 - h - dy + row, col) -- 5: hardcoded baseline
+					for row=1,#rows do
+						local byte = tonum("0x"..rows[row])
+						for bit=0,7 do
+							if band(byte, shl(0x80, -bit)) ~= 0 then
+								pset(xx + bit + dx, yy + 5 - h - dy + row, col) -- 5: hardcoded baseline
+							end
 						end
 					end
+					xx = xx + w + dx + 2
 				end
-				xx = xx + w + dx + 2
 			else
 				print("?", xx,yy, col)
 				xx = xx + 4
@@ -34,6 +41,7 @@ function utf8_iter(s)
 	local i = 1
 	return function()
 		if i > #s then return nil end
+		local byte_index = i
 		local c = ord(s, i)
 		local cp, len
 
@@ -52,7 +60,7 @@ function utf8_iter(s)
 		end
 
 		i = i + len
-		return cp
+		return cp, byte_index, len
 	end
 end
 

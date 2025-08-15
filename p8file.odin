@@ -10,14 +10,17 @@ import smary "core:container/small_array"
 
 P8File :: struct {
 	copy : string,
+
+	head : string,
 	chunks : map[string]string,
 
 	gfx : [4]P8FileGfxPage,
 }
 
-P8FileGfxPage :: [4][8][16*8]u8
+P8FileGfxPage :: [4*8][16*8]u8
 
 p8_load :: proc(raw: string, allocator:= context.allocator) -> P8File {
+	context.allocator = allocator
 	p8 : P8File
 	p8.copy = strings.clone(raw)
 	p8.chunks = make(map[string]string)
@@ -41,8 +44,12 @@ p8_load :: proc(raw: string, allocator:= context.allocator) -> P8File {
 
 	_submit :: proc(p8: ^P8File, head: string, chunk: ^strings.Builder, allocator:= context.allocator) {
 		using strings
-		h := head if head != {} else "head"
-		map_insert(&p8.chunks, h, clone(to_string(chunk^)))
+		str := clone(to_string(chunk^))
+		if head == {} {
+			p8.head = str
+		} else {
+			map_insert(&p8.chunks, head, str)
+		}
 		builder_reset(chunk)
 	}
 
@@ -50,14 +57,12 @@ p8_load :: proc(raw: string, allocator:= context.allocator) -> P8File {
 	gfx_chunk := strings.split_lines(p8.chunks["gfx"])
 	chunk_ptr := 0
 	for p in 0..<4 {
-		for r in 0..<4 {
-			for pr in 0..<8 {
-				if chunk_ptr == len(gfx_chunk) do break
-				for pixel, idx in gfx_chunk[chunk_ptr] {
-					p8.gfx[p][r][pr][idx] = u8(strconv._digit_value(pixel))
-				}
-				chunk_ptr += 1
+		for r in 0..<32 {
+			if chunk_ptr == len(gfx_chunk) do break
+			for pixel, idx in gfx_chunk[chunk_ptr] {
+				p8.gfx[p][r][idx] = u8(strconv._digit_value(pixel))
 			}
+			chunk_ptr += 1
 		}
 	}
 	return p8
@@ -68,6 +73,30 @@ p8_release :: proc(using p8: ^P8File) {
 		delete(cd)
 	}
 	delete(chunks)
+}
+
+p8_write :: proc(using p8: ^P8File, allocator:= context.allocator) -> string {
+	context.allocator = allocator
+	using strings
+	sb : Builder
+	write_string(&sb, p8.head)
+	for ch, cd in p8.chunks {
+		write_string(&sb, fmt.tprintf("__{}__\n", ch))
+		if ch == "gfx" {
+			values := "0123456789abcdef"
+			for page, page_idx in p8.gfx {
+				for row in page {
+					for px in row {
+						write_byte(&sb, values[px])
+					}
+					write_byte(&sb, '\n')
+				}
+			}
+		} else {
+			write_string(&sb, cd)
+		}
+	}
+	return to_string(sb)
 }
 
 p8colors :[16][3]u8= {
