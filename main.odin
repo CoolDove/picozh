@@ -88,28 +88,28 @@ change_state :: proc(s: ^State) {
 options : struct {
 	slim_mode : bool,
 	p8file_path : string,
+	sprite_pages : [dynamic]int,
+	target : string
 }
 
 sources : strings.Builder
-target : string
 
 p8file : P8File
-sprite_pages : [dynamic]int
 
 main :: proc() {
 	if len(os.args) < 2 do return
 
 	strings.builder_init(&sources); defer strings.builder_destroy(&sources)
 
-	sprite_pages = make([dynamic]int); defer delete(sprite_pages)
+	options.sprite_pages = make([dynamic]int); defer delete(options.sprite_pages)
 	argsok := args_read(
 		{argr_follow_by("-p8"), arga_set(&options.p8file_path)},
 		{argr_prefix("--sprite-page:"), arga_action(
 			proc(arg:string, user_data: rawptr) -> bool {
 				if page, ok := strconv.parse_int(arg); ok {
 					if page>3 || page<0 do return false
-					for p in sprite_pages do if p == page do return false
-					append(&sprite_pages, page)
+					for p in options.sprite_pages do if p == page do return false
+					append(&options.sprite_pages, page)
 					return true
 				} else {
 					return false
@@ -118,7 +118,7 @@ main :: proc() {
 		)},
 		{argr_follow_by("-to"), arga_action(
 			proc(arg:string, user_data: rawptr) -> bool {
-				target = arg
+				options.target = arg
 				return true
 			}
 		)},
@@ -136,10 +136,12 @@ main :: proc() {
 	)
 	if !argsok {
 		fmt.eprint("Invalid args.\n`picozh {sourcefile...} -to {targetfile} [--sprite-page:x(0,1,2,3)] [-p8 p8file]`")
-		os.exit(255)
+		os.exit(1)
 	} else {
-		fmt.printf("pages: {}\n", sprite_pages)
-		fmt.printf("p8file: {}\n", options.p8file_path)
+		if len(options.sprite_pages) > 0 && options.p8file_path == "" {
+			fmt.eprint("Invalid args.\nMust use `-p8 {file}` if you want to bake into the p8's tileset.")
+			os.exit(1)
+		}
 	}
 
 	p8file_loaded : bool
@@ -147,23 +149,14 @@ main :: proc() {
 		if f, o := os.read_entire_file(options.p8file_path); o {
 			p8file = p8_load(string(f))
 			p8file_loaded = true
-			// for page, page_idx in p8file.gfx {
-			// 	fmt.printf("page {}\n", page_idx)
-			// 	for row in page {
-			// 		for px in row {
-			// 			col := p8colors[px]
-			// 			fmt.printf("\x1b[48;2;{};{};{}m \x1b[0m", col.r, col.g, col.b)
-			// 		}
-			// 		fmt.print('\n')
-			// 	}
-			// }
 		} else {
-			fmt.printf("failed to read p8 file\n")
+			fmt.eprintf("Failed to read p8 file : {}\n", options.p8file_path)
+			os.exit(2)
 		}
 	}
 	defer if p8file_loaded do p8_release(&p8file)
 
-	if target == "" do target = "./unicode.lua"
+	if options.target == "" do options.target = "./unicode.lua"
 
 	for i in 32..<127 do strings.write_rune(&sources, rune(i))
 
@@ -196,7 +189,7 @@ main :: proc() {
 		runes[r] = i
 	}
 	available_sprite := make([dynamic]int)
-	for p in sprite_pages {
+	for p in options.sprite_pages {
 		for i in 0..<64 {
 			append(&available_sprite, p * 64 + i)
 		}
@@ -267,8 +260,12 @@ main :: proc() {
 		os.write_entire_file(options.p8file_path, transmute([]u8)outputp8)
 	}
 
-	os.write_entire_file(target, transmute([]u8)to_string(sb))
-	fmt.printf("{} characters generated.\n", len(runes))
+	os.write_entire_file(options.target, transmute([]u8)to_string(sb))
+	if options.p8file_path == "" {
+		fmt.printf("{} characters generated to {}{}.\n", len(runes), options.target)
+	} else {
+		fmt.printf("{} characters generated to {} and p8file {}.\n", len(runes), options.target, options.p8file_path)
+	}
 }
 
 _draw_glyph :: proc(r: rune) -> bool {

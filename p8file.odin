@@ -31,7 +31,8 @@ p8_load :: proc(raw: string, allocator:= context.allocator) -> P8File {
 
 	builder_init(&current_chunk)
 
-	for line in strings.split_lines_iterator(&p8.copy) {
+	lines := p8.copy
+	for line in strings.split_lines_iterator(&lines) {
 		if len(line) > 0 && line[0] == '_' {
 			_submit(&p8, current_head, &current_chunk)
 			current_head = strings.trim(line, "_")
@@ -43,6 +44,7 @@ p8_load :: proc(raw: string, allocator:= context.allocator) -> P8File {
 	_submit(&p8, current_head, &current_chunk)
 
 	_submit :: proc(p8: ^P8File, head: string, chunk: ^strings.Builder, allocator:= context.allocator) {
+		context.allocator = allocator
 		using strings
 		str := clone(to_string(chunk^))
 		if head == {} {
