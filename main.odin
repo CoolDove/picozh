@@ -191,7 +191,10 @@ main :: proc() {
 	available_sprite := make([dynamic]int)
 	for p in options.sprite_pages {
 		for i in 0..<64 {
-			append(&available_sprite, p * 64 + i)
+			append(&available_sprite, p * 64 + i + 256 * 0)
+			append(&available_sprite, p * 64 + i + 256 * 1)
+			append(&available_sprite, p * 64 + i + 256 * 2)
+			append(&available_sprite, p * 64 + i + 256 * 3)
 		}
 	}
 	sprite_slot_ptr := 0
@@ -203,6 +206,25 @@ main :: proc() {
 		else do return slice.Ordering.Less
 	})
 
+
+	for spr in available_sprite {
+		slot := spr
+		slot_sprid := slot % 256
+		slot_offset := cast(uint)(slot / 256)
+
+		page_idx := slot_sprid / 64
+		x := (slot_sprid%64)%16
+		y := (slot_sprid%64)/16
+		px, py := x * 8, y * 8
+
+		for i in 0..<8 {
+			for b in 0..<8 {
+				p8file.gfx[page_idx][py][px+(8-b)-1] = 0
+			}
+			py += 1
+		}
+	}
+
 	for info in sorted_runes {
 		r := info.r
 		box := info.box
@@ -212,23 +234,27 @@ main :: proc() {
 
 		if box.x == 7 && box.y == 7 && sprite_slot_ptr < len(available_sprite) { // write to sprite
 			slot := available_sprite[sprite_slot_ptr]
-			page_idx := slot / 64
-			x := (slot%64)%16
-			y := (slot%64)/16
+			slot_sprid := slot % 256
+			slot_offset := cast(uint)(slot / 256)
+
+			page_idx := slot_sprid / 64
+			x := (slot_sprid%64)%16
+			y := (slot_sprid%64)/16
 			px, py := x * 8, y * 8
 			for i in 0..<smary.len(info.glyphline) {
 				glyphline := smary.get(info.glyphline, i)
 				value, _ := strconv.parse_uint(glyphline, 16)
 				for b in 0..<8 {
 					paint := value & (1 << u8(b)) > 0
-					p8file.gfx[page_idx][py][px+(8-b)-1] = 7 if paint else 0
+					v := p8file.gfx[page_idx][py][px+(8-b)-1]
+					p8file.gfx[page_idx][py][px+(8-b)-1] = v|((1<<slot_offset) if paint else 0)
 				}
 				py += 1
 			}
 			if options.slim_mode {
-				write_string(&sb, fmt.tprintf("_unicode_table[{}] = {} ", int(r), slot))
+				write_string(&sb, fmt.tprintf("utb[{}] = {}\n", int(r), slot))
 			} else {
-				write_string(&sb, fmt.tprintf("_unicode_table[{}] = {} -- {} ({})\n", int(r), slot, r, info._appear_times))
+				write_string(&sb, fmt.tprintf("utb[{}] = {} -- {} ({})\n", int(r), slot, r, info._appear_times))
 			}
 			sprite_slot_ptr += 1
 		} else {
@@ -240,13 +266,13 @@ main :: proc() {
 				write_rune(&glyphline, ',')
 			}
 			if options.slim_mode {
-				write_string(&sb, fmt.tprintf("regchar\"{};{};{};{};{};{}\" ",
+				write_string(&sb, fmt.tprintf("rgc\"{};{};{};{};{};{}\"\n",
 					int(r),
 					box[0], box[1], box[2], box[3],
 					to_string(glyphline))
 				)
 			} else {
-				write_string(&sb, fmt.tprintf("regchar\"{};{};{};{};{};{}\" -- {} ({})\n",
+				write_string(&sb, fmt.tprintf("rgc\"{};{};{};{};{};{}\" -- {} ({})\n",
 					int(r),
 					box[0], box[1], box[2], box[3],
 					to_string(glyphline),

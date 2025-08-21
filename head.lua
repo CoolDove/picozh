@@ -8,12 +8,22 @@ function gprint(text, x, y, col)
 		if cp == 10 then
 			xx, yy = x, yy + 8
 		else
-			local data = _unicode_table[cp]
+			local data = utb[cp]
 			if data then
 				if type(data) == "number" then
-					pal(7, col)
-					spr(data, xx, yy)
-					pal()
+					local slot = data%256
+					local b = flr(data/256)
+
+					for i=0,16 do
+						if band(i, shl(1, b)) ~= 0 then
+							pal(i, col)
+						else
+							pal(i, 0)
+						end
+					end
+					spr(slot, xx, yy)
+					pal() -- 恢复调色
+
 					xx = xx + 8
 				else
 					local w, h, dx, dy, bitmap = unpack(data)
@@ -64,10 +74,10 @@ function utf8_iter(s)
 	end
 end
 
-_unicode_table = {}
+utb = {}
 
-function regchar(codestr) -- codepoint;w;h;ox;oy;bitmap
+function rgc(codestr) -- codepoint;w;h;ox;oy;bitmap
 	local parsed = split(codestr, ";")
-	_unicode_table[parsed[1]] = {unpack(parsed, 2)}
+	utb[parsed[1]] = {unpack(parsed, 2)}
 end
 
