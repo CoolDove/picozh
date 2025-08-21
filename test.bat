@@ -7,4 +7,4 @@ if exist "%p8file1%" (
     set "p8file=%p8file2%"
 )
 
-picozh "The Secret of Psalm 46.md" -p8 %p8file% --sprite-page:2 --sprite-page:3 -unknown-char " "
+picozh "The Secret of Psalm 46.md" -p8 %p8file% --sprite-page:1 --sprite-page:2 --sprite-page:3 -unknown-char " "
