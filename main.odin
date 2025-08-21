@@ -206,7 +206,6 @@ main :: proc() {
 		else do return slice.Ordering.Less
 	})
 
-
 	for spr in available_sprite {
 		slot := spr
 		slot_sprid := slot % 256
