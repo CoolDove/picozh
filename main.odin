@@ -1,5 +1,7 @@
 package main
 
+import "base:runtime"
+
 import "core:os"
 import "core:fmt"
 import "core:strings"
@@ -89,7 +91,8 @@ options : struct {
 	slim_mode : bool,
 	p8file_path : string,
 	sprite_pages : [dynamic]int,
-	target : string
+	target : string,
+	unknown_char : u8,
 }
 
 sources : strings.Builder
@@ -123,6 +126,15 @@ main :: proc() {
 			}
 		)},
 		{argr_is("--slim"), arga_set(&options.slim_mode)},
+		{argr_follow_by("-unknown-char"), arga_action(
+			proc(arg:string, user_data: rawptr) -> bool {
+				if len(arg) == 1 {
+					options.unknown_char = arg[0]
+					return true
+				}
+				return false
+			}
+		)},
 		{argr_any(), arga_action(
 			proc(arg:string, user_data: rawptr) -> bool {
 				source, ok := os.read_entire_file(arg)
@@ -170,10 +182,23 @@ main :: proc() {
 	sb : Builder
 	builder_init(&sb); defer builder_destroy(&sb)
 
-	template_head := #load("head.lua", string)
-	for line in split_lines_iterator(&template_head) {
-		write_string(&sb, line)
-		write_rune(&sb, '\n')
+	{
+		template_head := #load("head.lua", string)
+		unknown_char : string
+		if options.unknown_char != {} {
+			unknown_char = transmute(string)(runtime.Raw_String{&options.unknown_char, 1})
+		} else {
+			unknown_char = "?"
+		}
+		thead, thead_is_alloc := strings.replace(template_head,
+			"$UNKNOWN_CHAR$",
+			unknown_char,
+			1
+		)
+		for line in split_lines_iterator(&thead) {
+			write_string(&sb, line)
+			write_rune(&sb, '\n')
+		}
 	}
 
 	runes := make(map[rune]CharInfo); defer delete(runes)

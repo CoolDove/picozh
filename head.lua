@@ -40,7 +40,7 @@ function gprint(text, x, y, col)
 					xx = xx + w + dx + 2
 				end
 			else
-				print("?", xx,yy, col)
+				print("$UNKNOWN_CHAR$", xx,yy, col)
 				xx = xx + 4
 			end
 		end
